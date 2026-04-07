@@ -141,7 +141,7 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         id: "android-mdpi",
         width: 48,
         height: 48,
-        fileName: "mipmap-mdpi/ic_launcher.png",
+        fileName: "ic_launcher_48x48.png",
         purpose: "launcher",
         recommendedExecutor: "client"
       },
@@ -149,7 +149,7 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         id: "android-hdpi",
         width: 72,
         height: 72,
-        fileName: "mipmap-hdpi/ic_launcher.png",
+        fileName: "ic_launcher_72x72.png",
         purpose: "launcher",
         recommendedExecutor: "client"
       },
@@ -157,7 +157,7 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         id: "android-xhdpi",
         width: 96,
         height: 96,
-        fileName: "mipmap-xhdpi/ic_launcher.png",
+        fileName: "ic_launcher_96x96.png",
         purpose: "launcher",
         recommendedExecutor: "client"
       },
@@ -165,7 +165,7 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         id: "android-xxxhdpi",
         width: 192,
         height: 192,
-        fileName: "mipmap-xxxhdpi/ic_launcher.png",
+        fileName: "ic_launcher_192x192.png",
         purpose: "launcher",
         recommendedExecutor: "client"
       },
@@ -173,7 +173,7 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         id: "android-store",
         width: 512,
         height: 512,
-        fileName: "play-store-512.png",
+        fileName: "play_store_512x512.png",
         purpose: "store",
         recommendedExecutor: "client"
       }

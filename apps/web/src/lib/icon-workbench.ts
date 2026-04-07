@@ -115,7 +115,7 @@ export function getPreviewMetrics(
   const drawWidth = sourceWidth * totalScale;
   const drawHeight = sourceHeight * totalScale;
   
-  // Offset is now in source pixels relative to center
+  // Offset is in source pixels relative to center
   const scaledOffsetX = crop.offsetX * totalScale;
   const scaledOffsetY = crop.offsetY * totalScale;
 
@@ -130,7 +130,7 @@ export function getPreviewMetrics(
     drawHeight,
     drawX: (viewportSize - drawWidth) / 2 + finalOffsetX,
     drawY: (viewportSize - drawHeight) / 2 + finalOffsetY,
-    maxOffsetX: maxScaledOffsetX / totalScale, // max offset in source pixels
+    maxOffsetX: maxScaledOffsetX / totalScale,
     maxOffsetY: maxScaledOffsetY / totalScale
   };
 }
@@ -149,6 +149,7 @@ export function clampCropState(
     offsetY: clamp(crop.offsetY, -metrics.maxOffsetY, metrics.maxOffsetY)
   };
 }
+
 
 function canvasToBlob(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
@@ -300,10 +301,10 @@ export async function generateIconsFromSelection(
   image: HTMLImageElement,
   crop: CropState,
   presets: PlatformPreset[],
-  options: { compressionQuality?: number; includeIco?: boolean } = {}
+  options: { enableCompression?: boolean; compressionQuality?: number; includeIco?: boolean } = {}
 ) {
   const generated: GeneratedIcon[] = [];
-  const { compressionQuality = 1, includeIco = false } = options;
+  const { enableCompression = false, compressionQuality = 1, includeIco = false } = options;
 
   for (const preset of presets) {
     const icoVariants: Blob[] = [];
@@ -312,7 +313,7 @@ export async function generateIconsFromSelection(
       const outputSize = Math.max(variant.width, variant.height);
       let blob = await renderVariantBlob(image, crop, outputSize);
 
-      if (compressionQuality < 1) {
+      if (enableCompression && compressionQuality < 1) {
         blob = await compressImage(blob, compressionQuality);
       }
 

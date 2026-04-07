@@ -52,8 +52,12 @@ export default function App() {
   const [historyRecords, setHistoryRecords] = useState(() => readHistoryRecords());
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPackaging, setIsPackaging] = useState(false);
+  const [enableCompression, setEnableCompression] = useState(false);
   const [compressionQuality, setCompressionQuality] = useState(0.8);
   const [includeIco, setIncludeIco] = useState(true);
+  const [hasConfirmedCrop, setHasConfirmedCrop] = useState(false);
+  const [confirmedPreviewDataUrl, setConfirmedPreviewDataUrl] = useState<string | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   const dragStateRef = useRef<DragState | null>(null);
 
@@ -84,6 +88,8 @@ export default function App() {
       setUploadedImage(nextImage);
       setCrop({ ...INITIAL_CROP_STATE });
       setGeneratedIcons([]);
+      setHasConfirmedCrop(false);
+      setConfirmedPreviewDataUrl(null);
     } catch (error) {
       alert(error instanceof Error ? error.message : "读取图片失败");
     } finally {
@@ -94,6 +100,7 @@ export default function App() {
   function updateCrop(nextCrop: CropState) {
     if (!uploadedImage) return;
     setCrop(clampCropState(nextCrop, uploadedImage.width, uploadedImage.height));
+    setHasConfirmedCrop(false); // Reset confirmation on crop change
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -138,17 +145,41 @@ export default function App() {
     updateCrop({ ...crop, zoom: nextZoom });
   }
 
+  function handleFileDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDraggingFile(false);
+    
+    const file = event.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleFileChange({ target: { files: [file] } } as unknown as ChangeEvent<HTMLInputElement>);
+    }
+  }
+
+  async function handleConfirmCrop() {
+    if (!uploadedImage) return;
+    try {
+      const image = await loadImageElement(uploadedImage.src);
+      const previewDataUrl = await createPreviewDataUrl(image, crop, 160);
+      setConfirmedPreviewDataUrl(previewDataUrl);
+      setHasConfirmedCrop(true);
+    } catch (error) {
+      alert("裁剪确认失败");
+    }
+  }
+
   async function handleGenerate() {
-    if (!uploadedImage || selectedPresets.length === 0) return;
+    if (!uploadedImage || selectedPresets.length === 0 || !hasConfirmedCrop) return;
     setIsGenerating(true);
 
     try {
       const image = await loadImageElement(uploadedImage.src);
       const nextIcons = await generateIconsFromSelection(image, crop, selectedPresets, {
+        enableCompression,
         compressionQuality,
         includeIco
       });
-      const previewDataUrl = await createPreviewDataUrl(image, crop);
+      
+      const mainPreview = confirmedPreviewDataUrl || await createPreviewDataUrl(image, crop);
 
       setGeneratedIcons(nextIcons);
       setHistoryRecords(
@@ -158,7 +189,7 @@ export default function App() {
           fileName: uploadedImage.fileName,
           sourceWidth: uploadedImage.width,
           sourceHeight: uploadedImage.height,
-          previewDataUrl,
+          previewDataUrl: mainPreview,
           selectedPlatforms,
           generatedCount: nextIcons.length,
           crop
@@ -205,20 +236,13 @@ export default function App() {
           >
             {uploadedImage ? "更换图片" : "点击上传源图"}
           </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleGenerate}
-            disabled={!uploadedImage || isGenerating}
-          >
-            {isGenerating ? "正在处理..." : "开始生成"}
-          </button>
         </div>
       </header>
 
       <main className="workbench">
         <section className="stage-container">
           <div
-            className={`crop-stage ${!uploadedImage ? "empty" : ""}`}
+            className={`crop-stage ${!uploadedImage ? "empty" : ""} ${isDraggingFile ? "drag-over" : ""}`}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -226,29 +250,77 @@ export default function App() {
             onPointerLeave={handlePointerUp}
             onWheel={handleWheel}
             onDoubleClick={() => setCrop(INITIAL_CROP_STATE)}
+            onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+            onDragLeave={() => setIsDraggingFile(false)}
+            onDrop={handleFileDrop}
+            style={{ position: "relative" }}
           >
             {uploadedImage && previewMetrics ? (
-              <>
+              <div style={{ position: "relative", width: 320, height: 320, overflow: "visible" }}>
                 <img
                   src={uploadedImage.src}
                   alt="Source"
                   className="crop-image"
                   draggable={false}
                   style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
                     width: `${previewMetrics.drawWidth}px`,
                     height: `${previewMetrics.drawHeight}px`,
                     transform: `translate(${previewMetrics.drawX}px, ${previewMetrics.drawY}px)`
                   }}
                 />
-                <div className="crop-overlay" />
-              </>
+                <div className="crop-overlay" style={{ position: "absolute", top: 0, left: 0, margin: 0 }} />
+              </div>
             ) : (
-              <div className="empty-hint">
-                <p>等待源图导入...</p>
+              <div className="empty-hint" style={{ pointerEvents: "none" }}>
+                <p>{isDraggingFile ? "释放以上传图片" : "点击工具栏上传，或将原图拖放至此"}</p>
                 <span>推荐使用 1024x1024 以上的清晰原图</span>
               </div>
             )}
           </div>
+          
+          {uploadedImage && (
+            <div className="flex-row" style={{ justifyContent: "space-between", background: "var(--panel)", padding: "1rem", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)" }}>
+              <div className="flex-row" style={{ alignItems: "center", gap: "12px" }}>
+                {hasConfirmedCrop && confirmedPreviewDataUrl && (
+                  <img 
+                    src={confirmedPreviewDataUrl} 
+                    alt="Preview" 
+                    style={{ width: "40px", height: "40px", borderRadius: "8px", border: "1px solid var(--border Bright)", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }} 
+                  />
+                )}
+                <div className="flex-column" style={{ marginLeft: hasConfirmedCrop ? "0" : "8px" }}>
+                  {hasConfirmedCrop ? (
+                    <span style={{ color: "var(--success)", fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                      已确认裁剪部位
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--warning)", fontSize: "0.875rem", fontWeight: 600 }}>
+                      调整完美后请点击确认 👉
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex-row">
+                <button 
+                  className={`btn ${hasConfirmedCrop ? 'btn-outline' : 'btn-primary'}`} 
+                  onClick={handleConfirmCrop}
+                >
+                  {hasConfirmedCrop ? "重新确认" : "确认裁剪部位"}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleGenerate}
+                  disabled={!hasConfirmedCrop || isGenerating}
+                  style={{ background: hasConfirmedCrop ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" : "" }}
+                >
+                  {isGenerating ? "生成中..." : "开始生成"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="card">
             <div className="card-header">
@@ -320,7 +392,19 @@ export default function App() {
                   disabled={!uploadedImage}
                 />
               </div>
-              <div className="field-block">
+              
+              <div className="toggle-group" style={{ marginBottom: "-10px" }}>
+                <label style={{ fontSize: "0.875rem", fontWeight: 500 }}>启用图片压缩</label>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={enableCompression}
+                    onChange={(e) => setEnableCompression(e.target.checked)}
+                  />
+                  <span className="slider"></span>
+                </label>
+              </div>
+              <div className="field-block" style={{ opacity: enableCompression ? 1 : 0.4, pointerEvents: enableCompression ? "auto" : "none" }}>
                 <div className="label-row">
                   <label>PNG 质量压缩</label>
                   <span>{Math.round(compressionQuality * 100)}%</span>
