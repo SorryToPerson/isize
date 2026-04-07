@@ -59,3 +59,17 @@
    - 除了原有的“点击上传”按钮，给整个 Stage 工作台添加了文件系统的 `Drag & Drop` 原生接口支持监听。
    - 现在可以直接将要裁剪的主图拖入浏览器中处理，并且附有 Hover 提醒的视觉状态。
 
+---
+
+## 2026-04-07 (Phase 4): 设计规范与自动化图形遮罩
+
+### 核心实现
+1. **构建设计准则绿皮书 (`doc/design_standards.md`)**
+   - 新建并编写了针对 Web、苹果生态、安卓及其他不同平台的“形状与底色约束”规范总结，做到“设计即文档”。
+2. **底层合约拓扑 (`packages/contracts/src/index.ts`)**
+   - 拓展了 `IconVariant` 数据结构类型，增加了 `shape`（例如 squircle，circle 等）和 `backgroundColor` 配置属性。
+   - 硬编码对配置表的 iOS / macOS 预设以及 Web 端 Apple Touch 注入了针对性的“非透明超椭圆+白底”的视觉参数配置要求。
+3. **Canvas 绘制渲染器（动态遮罩）**
+   - `lib/icon-workbench.ts` 切图引擎中，新增根据不同配置要求动态注入 `CanvasRenderingContext2D.clip()` 遮罩的方法。
+   - 利用 `Canvas` 在主图绘制前模拟高精度的 `Squircle` / `Rounded Rect` 边缘几何切割，完美还原各平台的物理拟物质感。
+

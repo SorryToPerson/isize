@@ -243,20 +243,22 @@ export default function App() {
         <section className="stage-container">
           <div
             className={`crop-stage ${!uploadedImage ? "empty" : ""} ${isDraggingFile ? "drag-over" : ""}`}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            onWheel={handleWheel}
-            onDoubleClick={() => setCrop(INITIAL_CROP_STATE)}
             onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
             onDragLeave={() => setIsDraggingFile(false)}
             onDrop={handleFileDrop}
             style={{ position: "relative" }}
           >
             {uploadedImage && previewMetrics ? (
-              <div style={{ position: "relative", width: 320, height: 320, overflow: "visible" }}>
+              <div 
+                style={{ position: "relative", width: 320, height: 320, overflow: "visible", cursor: dragStateRef.current ? "grabbing" : "grab" }}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+                onWheel={handleWheel}
+                onDoubleClick={() => setCrop(INITIAL_CROP_STATE)}
+              >
                 <img
                   src={uploadedImage.src}
                   alt="Source"

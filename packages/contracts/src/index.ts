@@ -7,6 +7,7 @@ export type PlatformKey =
   | "miniprogram";
 
 export type ProcessingExecutor = "client" | "server";
+export type IconShape = "square" | "circle" | "squircle" | "rounded-rect";
 
 export interface IconVariant {
   id: string;
@@ -16,6 +17,8 @@ export interface IconVariant {
   purpose: "favicon" | "launcher" | "store" | "touch" | "tile";
   recommendedExecutor: ProcessingExecutor;
   notes?: string;
+  shape?: IconShape;
+  backgroundColor?: string;
 }
 
 export interface PlatformPreset {
@@ -65,7 +68,9 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 180,
         fileName: "apple-touch-icon.png",
         purpose: "touch",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle",
+        backgroundColor: "#FFFFFF"
       },
       {
         id: "pwa-192",
@@ -100,7 +105,9 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 120,
         fileName: "AppIcon-60@2x.png",
         purpose: "launcher",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle",
+        backgroundColor: "#FFFFFF"
       },
       {
         id: "ios-60-3x",
@@ -108,7 +115,9 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 180,
         fileName: "AppIcon-60@3x.png",
         purpose: "launcher",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle",
+        backgroundColor: "#FFFFFF"
       },
       {
         id: "ios-83-5-2x",
@@ -116,7 +125,9 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 167,
         fileName: "AppIcon-83.5@2x.png",
         purpose: "launcher",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle",
+        backgroundColor: "#FFFFFF"
       },
       {
         id: "ios-store",
@@ -124,7 +135,9 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 1024,
         fileName: "AppStore-1024.png",
         purpose: "store",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle",
+        backgroundColor: "#FFFFFF"
       }
     ]
   },
@@ -194,7 +207,8 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 16,
         fileName: "icon_16x16.png",
         purpose: "launcher",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle"
       },
       {
         id: "macos-32",
@@ -202,7 +216,8 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 32,
         fileName: "icon_16x16@2x.png",
         purpose: "launcher",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle"
       },
       {
         id: "macos-256",
@@ -210,7 +225,8 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 256,
         fileName: "icon_128x128@2x.png",
         purpose: "launcher",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle"
       },
       {
         id: "macos-512",
@@ -218,7 +234,8 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 512,
         fileName: "icon_512x512.png",
         purpose: "launcher",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle"
       },
       {
         id: "macos-1024",
@@ -226,7 +243,8 @@ export const PLATFORM_PRESETS: PlatformPreset[] = [
         height: 1024,
         fileName: "icon_512x512@2x.png",
         purpose: "store",
-        recommendedExecutor: "client"
+        recommendedExecutor: "client",
+        shape: "squircle"
       }
     ]
   },

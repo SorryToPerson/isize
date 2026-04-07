@@ -167,9 +167,10 @@ function canvasToBlob(canvas: HTMLCanvasElement) {
 export async function renderVariantBlob(
   image: HTMLImageElement,
   crop: CropState,
-  outputSize: number,
+  variant: IconVariant,
   viewportSize = CROP_VIEWPORT_SIZE
 ) {
+  const outputSize = Math.max(variant.width, variant.height);
   const canvas = document.createElement("canvas");
   const metrics = getPreviewMetrics(
     image.naturalWidth,
@@ -189,6 +190,40 @@ export async function renderVariantBlob(
   }
 
   context.clearRect(0, 0, outputSize, outputSize);
+
+  if (variant.shape || variant.backgroundColor) {
+    if (variant.shape === "circle") {
+      context.beginPath();
+      context.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, Math.PI * 2);
+      context.closePath();
+      context.clip();
+    } else if (variant.shape === "squircle" || variant.shape === "rounded-rect") {
+      const radius = variant.shape === "squircle" ? outputSize * 0.2237 : outputSize * 0.0833;
+      context.beginPath();
+      // Use roundRect if available, otherwise robust fallback
+      if (typeof context.roundRect === "function") {
+        context.roundRect(0, 0, outputSize, outputSize, radius);
+      } else {
+        context.moveTo(radius, 0);
+        context.lineTo(outputSize - radius, 0);
+        context.arcTo(outputSize, 0, outputSize, radius, radius);
+        context.lineTo(outputSize, outputSize - radius);
+        context.arcTo(outputSize, outputSize, outputSize - radius, outputSize, radius);
+        context.lineTo(radius, outputSize);
+        context.arcTo(0, outputSize, 0, outputSize - radius, radius);
+        context.lineTo(0, radius);
+        context.arcTo(0, 0, radius, 0, radius);
+      }
+      context.closePath();
+      context.clip();
+    }
+
+    if (variant.backgroundColor) {
+      context.fillStyle = variant.backgroundColor;
+      context.fillRect(0, 0, outputSize, outputSize);
+    }
+  }
+
   context.drawImage(
     image,
     metrics.drawX * scaleRatio,
@@ -310,8 +345,8 @@ export async function generateIconsFromSelection(
     const icoVariants: Blob[] = [];
     
     for (const variant of preset.variants) {
+      let blob = await renderVariantBlob(image, crop, variant);
       const outputSize = Math.max(variant.width, variant.height);
-      let blob = await renderVariantBlob(image, crop, outputSize);
 
       if (enableCompression && compressionQuality < 1) {
         blob = await compressImage(blob, compressionQuality);
