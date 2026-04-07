@@ -1,194 +1,403 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type PointerEvent as ReactPointerEvent
+} from "react";
+import {
+  DEFAULT_PLATFORM_KEYS,
+  INITIAL_CROP_STATE,
+  PLATFORM_PRESETS,
+  clampCropState,
+  createArchiveName,
+  createDownloadName,
+  createPreviewDataUrl,
+  downloadBlob,
+  formatBytes,
+  formatDateLabel,
+  generateIconsFromSelection,
+  getPreviewMetrics,
+  loadImageElement,
+  readHistoryRecords,
+  readImageFile,
+  revokeGeneratedIcons,
+  saveHistoryRecord,
+  type CropState,
+  type GeneratedIcon,
+  type PlatformKey,
+  type UploadedImage
+} from "./lib/icon-workbench";
+import { buildZipBlob } from "./lib/zip";
 
-const platformCards = [
-  {
-    key: "web",
-    title: "WEB / PWA",
-    summary: "覆盖 favicon、Apple Touch Icon 与 PWA 安装图标。",
-    executor: "浏览器内直接处理",
-    sizes: ["16", "32", "180", "192", "512"],
-    note: "适合官网、后台、落地页和 PWA。"
-  },
-  {
-    key: "ios",
-    title: "iOS / iPadOS",
-    summary: "遵循 App Store 与设备图标基础规格。",
-    executor: "客户端优先，规则由平台预设驱动",
-    sizes: ["120", "167", "180", "1024"],
-    note: "避免预加圆角，重点检查安全区。"
-  },
-  {
-    key: "android",
-    title: "Android",
-    summary: "覆盖主流 mipmap 规格与商店图标。",
-    executor: "客户端优先",
-    sizes: ["48", "72", "96", "192", "512"],
-    note: "需提示前景图留白与不同品牌蒙版差异。"
-  },
-  {
-    key: "desktop",
-    title: "macOS / Windows",
-    summary: "桌面端多尺寸资源打包与命名规则。",
-    executor: "复杂打包时回退后端兜底",
-    sizes: ["16", "32", "256", "512", "1024"],
-    note: "尤其适合后续补齐 icns / Windows 目录结构。"
-  }
-] as const;
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startOffsetX: number;
+  startOffsetY: number;
+}
 
-const architectureCards = [
-  {
-    title: "Local-first",
-    body: "所有历史记录与最近配置仅保存在客户端本地，不默认上传用户素材。"
-  },
-  {
-    title: "Client-first processing",
-    body: "Web 端优先使用 Canvas、Worker 和本地 zip 能力处理图标，降低服务端成本。"
-  },
-  {
-    title: "Server fallback",
-    body: "NestJS 只负责规格查询、任务规划和重型导出兜底，不做持久化。"
-  }
-];
-
-const milestones = [
-  "M0：三端骨架、规则文档、PRD 与共享规格占位",
-  "M1：上传、裁切、Web / iOS / Android 预设、批量导出",
-  "M2：服务端兜底、移动端导入导出、复杂平台补齐"
-];
+function createRecordId() {
+  return `history-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
 
 export default function App() {
-  const [activePlatform, setActivePlatform] = useState(platformCards[0].key);
-  const [fileName, setFileName] = useState("支持 PNG / JPG，后续补充 SVG");
+  const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
+  const [crop, setCrop] = useState<CropState>(INITIAL_CROP_STATE);
+  const [selectedPlatforms, setSelectedPlatforms] =
+    useState<PlatformKey[]>(DEFAULT_PLATFORM_KEYS);
+  const [generatedIcons, setGeneratedIcons] = useState<GeneratedIcon[]>([]);
+  const [historyRecords, setHistoryRecords] = useState(() => readHistoryRecords());
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isPackaging, setIsPackaging] = useState(false);
+  const [compressionQuality, setCompressionQuality] = useState(0.8);
+  const [includeIco, setIncludeIco] = useState(true);
 
-  const currentPlatform =
-    platformCards.find((item) => item.key === activePlatform) ?? platformCards[0];
+  const dragStateRef = useRef<DragState | null>(null);
+
+  useEffect(() => {
+    return () => {
+      revokeGeneratedIcons(generatedIcons);
+    };
+  }, [generatedIcons]);
+
+  const selectedPresets = useMemo(
+    () =>
+      PLATFORM_PRESETS.filter((preset) => selectedPlatforms.includes(preset.key)),
+    [selectedPlatforms]
+  );
+
+  const previewMetrics = useMemo(() => {
+    if (!uploadedImage) return null;
+    return getPreviewMetrics(uploadedImage.width, uploadedImage.height, crop);
+  }, [crop, uploadedImage]);
+
+
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const nextFile = event.target.files?.[0];
+    if (!nextFile) return;
+
+    try {
+      const nextImage = await readImageFile(nextFile);
+      setUploadedImage(nextImage);
+      setCrop({ ...INITIAL_CROP_STATE });
+      setGeneratedIcons([]);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "读取图片失败");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function updateCrop(nextCrop: CropState) {
+    if (!uploadedImage) return;
+    setCrop(clampCropState(nextCrop, uploadedImage.width, uploadedImage.height));
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!uploadedImage) return;
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffsetX: crop.offsetX,
+      startOffsetY: crop.offsetY
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragStateRef.current || !uploadedImage || !previewMetrics) return;
+
+    const scale = previewMetrics.drawWidth / uploadedImage.width;
+    const deltaX = (event.clientX - dragStateRef.current.startX) / scale;
+    const deltaY = (event.clientY - dragStateRef.current.startY) / scale;
+
+    updateCrop({
+      ...crop,
+      offsetX: dragStateRef.current.startOffsetX + deltaX,
+      offsetY: dragStateRef.current.startOffsetY + deltaY
+    });
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (dragStateRef.current?.pointerId === event.pointerId) {
+      dragStateRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    }
+  }
+
+  function handleWheel(event: React.WheelEvent) {
+    if (!uploadedImage) return;
+    const delta = -event.deltaY * 0.001;
+    const nextZoom = Math.min(Math.max(crop.zoom + delta, 1), 5);
+    updateCrop({ ...crop, zoom: nextZoom });
+  }
+
+  async function handleGenerate() {
+    if (!uploadedImage || selectedPresets.length === 0) return;
+    setIsGenerating(true);
+
+    try {
+      const image = await loadImageElement(uploadedImage.src);
+      const nextIcons = await generateIconsFromSelection(image, crop, selectedPresets, {
+        compressionQuality,
+        includeIco
+      });
+      const previewDataUrl = await createPreviewDataUrl(image, crop);
+
+      setGeneratedIcons(nextIcons);
+      setHistoryRecords(
+        saveHistoryRecord({
+          id: createRecordId(),
+          createdAt: new Date().toISOString(),
+          fileName: uploadedImage.fileName,
+          sourceWidth: uploadedImage.width,
+          sourceHeight: uploadedImage.height,
+          previewDataUrl,
+          selectedPlatforms,
+          generatedCount: nextIcons.length,
+          crop
+        })
+      );
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "生成失败");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function handleDownloadZip() {
+    if (generatedIcons.length === 0) return;
+    setIsPackaging(true);
+    try {
+      const zipBlob = await buildZipBlob(
+        generatedIcons.map((i) => ({ fileName: i.archivePath, blob: i.blob }))
+      );
+      downloadBlob(zipBlob, createArchiveName());
+    } finally {
+      setIsPackaging(false);
+    }
+  }
 
   return (
-    <main className="app-shell">
-      <section className="hero-section">
-        <div className="hero-copy">
-          <p className="eyebrow">Icon Processing Workspace</p>
-          <h1>一次上传，生成 Web、App 与桌面平台所需的图标矩阵</h1>
-          <p className="hero-description">
-            这是 `iSize` 的第一版工作台骨架。它把产品方向、平台规格和后续研发路径先落成结构化界面，
-            方便我们接下来逐个完成上传、裁切、导出和服务端兜底。
-          </p>
+    <div className="app-container">
+      <header>
+        <div className="logo-group">
+          <h1>iSize Icon Workbench</h1>
+          <p>智能、快速、纯前端的图标处理专家</p>
+        </div>
+        <div className="flex-row">
+          <input
+            id="file-upload"
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+          <button
+            className="btn btn-outline"
+            onClick={() => document.getElementById("file-upload")?.click()}
+          >
+            {uploadedImage ? "更换图片" : "点击上传源图"}
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={handleGenerate}
+            disabled={!uploadedImage || isGenerating}
+          >
+            {isGenerating ? "正在处理..." : "开始生成"}
+          </button>
+        </div>
+      </header>
 
-          <div className="hero-actions">
-            <label className="primary-action" htmlFor="source-upload">
-              选择源图
-            </label>
-            <input
-              id="source-upload"
-              type="file"
-              accept="image/*"
-              className="file-input"
-              onChange={(event) => {
-                const nextFile = event.target.files?.[0]?.name;
-                setFileName(nextFile ?? "支持 PNG / JPG，后续补充 SVG");
-              }}
-            />
-            <span className="file-note">{fileName}</span>
+      <main className="workbench">
+        <section className="stage-container">
+          <div
+            className={`crop-stage ${!uploadedImage ? "empty" : ""}`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            onWheel={handleWheel}
+            onDoubleClick={() => setCrop(INITIAL_CROP_STATE)}
+          >
+            {uploadedImage && previewMetrics ? (
+              <>
+                <img
+                  src={uploadedImage.src}
+                  alt="Source"
+                  className="crop-image"
+                  draggable={false}
+                  style={{
+                    width: `${previewMetrics.drawWidth}px`,
+                    height: `${previewMetrics.drawHeight}px`,
+                    transform: `translate(${previewMetrics.drawX}px, ${previewMetrics.drawY}px)`
+                  }}
+                />
+                <div className="crop-overlay" />
+              </>
+            ) : (
+              <div className="empty-hint">
+                <p>等待源图导入...</p>
+                <span>推荐使用 1024x1024 以上的清晰原图</span>
+              </div>
+            )}
           </div>
 
-          <div className="hero-stats">
-            <article>
-              <strong>3 端</strong>
-              <span>Web / App / Server</span>
-            </article>
-            <article>
-              <strong>16-1024</strong>
-              <span>覆盖主要输出尺寸</span>
-            </article>
-            <article>
-              <strong>Local-first</strong>
-              <span>默认不保存用户素材</span>
-            </article>
-          </div>
-        </div>
-
-        <div className="pipeline-card">
-          <p className="panel-title">核心流程</p>
-          <ol className="pipeline-list">
-            <li>导入原图并校验清晰度</li>
-            <li>完成 1:1 正方形裁切</li>
-            <li>选择目标平台与导出模式</li>
-            <li>客户端优先处理，必要时回退后端</li>
-            <li>导出单图或 zip，并写入本地历史</li>
-          </ol>
-        </div>
-      </section>
-
-      <section className="content-section">
-        <div className="section-header">
-          <p className="eyebrow">Platform Presets</p>
-          <h2>按平台规范组织输出规格</h2>
-        </div>
-
-        <div className="platform-grid">
-          {platformCards.map((platform) => (
-            <button
-              key={platform.key}
-              type="button"
-              className={`platform-card ${
-                platform.key === currentPlatform.key ? "is-active" : ""
-              }`}
-              onClick={() => setActivePlatform(platform.key)}
-            >
-              <span>{platform.title}</span>
-              <small>{platform.summary}</small>
-            </button>
-          ))}
-        </div>
-
-        <article className="platform-detail">
-          <div>
-            <p className="panel-title">{currentPlatform.title}</p>
-            <p className="detail-summary">{currentPlatform.summary}</p>
-            <p className="detail-note">{currentPlatform.note}</p>
-          </div>
-
-          <div className="detail-side">
-            <span className="executor-chip">{currentPlatform.executor}</span>
-            <div className="size-list">
-              {currentPlatform.sizes.map((size) => (
-                <span key={size}>{size} px</span>
-              ))}
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">输出预览 ({generatedIcons.length})</span>
+              <div className="flex-row">
+                <button
+                  className="btn btn-ghost"
+                  disabled={generatedIcons.length === 0}
+                  onClick={() => setGeneratedIcons([])}
+                >
+                  清空
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={generatedIcons.length === 0 || isPackaging}
+                  onClick={handleDownloadZip}
+                >
+                  {isPackaging ? "打包中..." : "打包下载 ZIP"}
+                </button>
+              </div>
+            </div>
+            <div className="control-group">
+              <div className="results-grid">
+                {generatedIcons.map((icon) => (
+                  <article key={icon.id} className="icon-card">
+                    <div className="icon-preview">
+                      <img src={icon.previewUrl} alt={icon.variant.fileName} />
+                    </div>
+                    <div className="icon-info">
+                      <strong>{icon.variant.fileName.split("/").pop()}</strong>
+                      <span>{icon.variant.width}x{icon.variant.height} · {formatBytes(icon.blob.size)}</span>
+                    </div>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => downloadBlob(icon.blob, createDownloadName(icon.platformKey, icon.variant.fileName))}
+                    >
+                      下载
+                    </button>
+                  </article>
+                ))}
+                {generatedIcons.length === 0 && (
+                  <div className="spacer" style={{ gridColumn: "1/-1", textAlign: "center", padding: "2rem", color: "var(--text-dim)" }}>
+                    生成的图标将显示在这里
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </article>
-      </section>
+        </section>
 
-      <section className="content-section">
-        <div className="section-header">
-          <p className="eyebrow">Architecture</p>
-          <h2>先把职责边界定清楚，再逐个交付能力</h2>
-        </div>
+        <aside className="controls-stack">
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">裁剪与控制</span>
+            </div>
+            <div className="control-group">
+              <div className="field-block">
+                <div className="label-row">
+                  <label>比例缩放</label>
+                  <span>{crop.zoom.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="0.01"
+                  value={crop.zoom}
+                  onChange={(e) => updateCrop({ ...crop, zoom: parseFloat(e.target.value) })}
+                  disabled={!uploadedImage}
+                />
+              </div>
+              <div className="field-block">
+                <div className="label-row">
+                  <label>PNG 质量压缩</label>
+                  <span>{Math.round(compressionQuality * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.05"
+                  value={compressionQuality}
+                  onChange={(e) => setCompressionQuality(parseFloat(e.target.value))}
+                />
+              </div>
+              <div className="toggle-group">
+                <label style={{ fontSize: "0.875rem", fontWeight: 500 }}>包含 ICO 网站图标</label>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={includeIco}
+                    onChange={(e) => setIncludeIco(e.target.checked)}
+                  />
+                  <span className="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
 
-        <div className="architecture-grid">
-          {architectureCards.map((card) => (
-            <article key={card.title} className="info-card">
-              <p className="panel-title">{card.title}</p>
-              <p>{card.body}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">平台预设</span>
+            </div>
+            <div className="control-group">
+              <div className="platform-grid">
+                {PLATFORM_PRESETS.map((p) => (
+                  <div
+                    key={p.key}
+                    className={`platform-item ${selectedPlatforms.includes(p.key) ? "active" : ""}`}
+                    onClick={() => {
+                      setSelectedPlatforms((curr) =>
+                        curr.includes(p.key)
+                          ? curr.filter((k) => k !== p.key)
+                          : [...curr, p.key]
+                      );
+                    }}
+                  >
+                    <span>{p.label}</span>
+                    <small>{p.variants.length} 个图标</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
 
-      <section className="content-section">
-        <div className="section-header">
-          <p className="eyebrow">Roadmap</p>
-          <h2>后续按阶段推进，避免一次把平台规则做散</h2>
-        </div>
-
-        <div className="roadmap-list">
-          {milestones.map((milestone) => (
-            <article key={milestone} className="roadmap-item">
-              {milestone}
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">最近记录</span>
+            </div>
+            <div className="history-list">
+              {historyRecords.length > 0 ? (
+                historyRecords.map((r) => (
+                  <div key={r.id} className="history-item">
+                    <img src={r.previewDataUrl} alt={r.fileName} />
+                    <div className="history-detail">
+                      <strong>{r.fileName}</strong>
+                      <span>{formatDateLabel(r.createdAt)} · {r.generatedCount} 图标</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p style={{ textAlign: "center", padding: "1rem", color: "var(--text-dim)", fontSize: "0.875rem" }}>
+                  暂无历史记录
+                </p>
+              )}
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
   );
 }
