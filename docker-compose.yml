@@ -3,10 +3,30 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: isize-app:latest
     container_name: isize-app
+    restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3000
+      API_PREFIX: ${API_PREFIX:-api}
+      ENABLE_CORS: ${ENABLE_CORS:-true}
+      WEB_DIST_PATH: ${WEB_DIST_PATH:-/app/apps/web/dist}
     ports:
       - "${APP_PORT:-3000}:3000"
-    restart: unless-stopped
+    networks:
+      - isize-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1:${PORT:-3000}/${API_PREFIX:-api}/health >/dev/null || exit 1"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  isize-network:
+    driver: bridge

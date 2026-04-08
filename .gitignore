@@ -2,8 +2,13 @@ node_modules
 dist
 coverage
 .DS_Store
+.env
 *.log
 .expo
+apps/server/.env
+apps/server/.env.local
+apps/server/.env.development
+apps/server/.env.production
 apps/app/.expo
 apps/app/web-build
 apps/web/dist
