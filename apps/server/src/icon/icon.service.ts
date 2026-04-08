@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import { PlanIconTaskDto, PlatformKey } from "./dto/plan-icon-task.dto";
+import { PlanIconTaskDto } from "./dto/plan-icon-task.dto";
+import { PlatformKey } from "./icon.constants";
 
 interface IconPresetSummary {
   key: PlatformKey;
@@ -56,9 +57,17 @@ const ICON_PRESETS: IconPresetSummary[] = [
 
 @Injectable()
 export class IconService {
+  getPresetSummaries(platforms?: PlatformKey[]) {
+    if (!platforms || platforms.length === 0) {
+      return ICON_PRESETS;
+    }
+
+    return ICON_PRESETS.filter((preset) => platforms.includes(preset.key));
+  }
+
   getPresets() {
     return {
-      presets: ICON_PRESETS,
+      presets: this.getPresetSummaries(),
       productRules: {
         localFirst: true,
         serverPersistsFiles: false,
@@ -92,9 +101,7 @@ export class IconService {
     }
 
     const preferredExecutor = reasons.length > 0 ? "server" : "client";
-    const selectedPresets = ICON_PRESETS.filter((preset) =>
-      dto.platforms.includes(preset.key)
-    );
+    const selectedPresets = this.getPresetSummaries(dto.platforms);
 
     return {
       preferredExecutor,
